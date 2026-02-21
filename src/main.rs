@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Axis, Block, Chart, Dataset, GraphType, Paragraph},
+    widgets::{Bar, BarChart, BarGroup, Block, Paragraph},
     DefaultTerminal, Frame,
 };
 
@@ -33,7 +33,7 @@ pub struct App {
     /// The current input for the CSV path.
     input: String,
     /// The data for the chart.
-    data: Vec<(f64, f64)>,
+    data: Vec<(String, u64)>,
     /// Error message to display.
     error_message: Option<String>,
 }
@@ -127,51 +127,37 @@ impl App {
         };
         frame.render_widget(error_message, chunks[2]);
 
-        let datasets = vec![Dataset::default()
-            .name("data")
-            .marker(ratatui::symbols::Marker::Dot)
-            .graph_type(GraphType::Line)
-            .style(Style::default().fg(Color::Cyan))
-            .data(&self.data)];
+        let bar_data: Vec<Bar> = self
+            .data
+            .iter()
+            .enumerate()
+            .map(|(i, (label, value))| {
+                let color = match i % 6 {
+                    0 => Color::Red,
+                    1 => Color::Green,
+                    2 => Color::Yellow,
+                    3 => Color::Blue,
+                    4 => Color::Magenta,
+                    _ => Color::Cyan,
+                };
+                Bar::default()
+                    .value(*value)
+                    .label(Line::from(label.as_str()))
+                    .style(Style::default().fg(color))
+            })
+            .collect();
 
-        let chart = Chart::new(datasets)
+        let barchart = BarChart::default()
             .block(
                 Block::bordered().title(Span::styled(
                     "Data Chart",
                     Style::default().add_modifier(Modifier::BOLD),
                 )),
             )
-            .x_axis(
-                Axis::default()
-                    .title("X")
-                    .style(Style::default().fg(Color::Gray))
-                    .bounds(self.get_x_bounds()),
-            )
-            .y_axis(
-                Axis::default()
-                    .title("Y")
-                    .style(Style::default().fg(Color::Gray))
-                    .bounds(self.get_y_bounds()),
-            );
-        frame.render_widget(chart, chunks[3]);
-    }
-
-    fn get_x_bounds(&self) -> [f64; 2] {
-        if self.data.is_empty() {
-            return [0.0, 10.0];
-        }
-        let min = self.data.iter().map(|(x, _)| *x).fold(f64::INFINITY, f64::min);
-        let max = self.data.iter().map(|(x, _)| *x).fold(f64::NEG_INFINITY, f64::max);
-        [min, max]
-    }
-
-    fn get_y_bounds(&self) -> [f64; 2] {
-        if self.data.is_empty() {
-            return [0.0, 10.0];
-        }
-        let min = self.data.iter().map(|(_, y)| *y).fold(f64::INFINITY, f64::min);
-        let max = self.data.iter().map(|(_, y)| *y).fold(f64::NEG_INFINITY, f64::max);
-        [min, max]
+            .data(BarGroup::default().bars(&bar_data))
+            .bar_width(9)
+            .bar_gap(1);
+        frame.render_widget(barchart, chunks[3]);
     }
 
     /// Reads the crossterm events and updates the state of [`App`].
@@ -224,9 +210,9 @@ impl App {
         for result in rdr.records() {
             let record = result?;
             if record.len() >= 2 {
-                let x: f64 = record[0].parse()?;
-                let y: f64 = record[1].parse()?;
-                new_data.push((x, y));
+                let label = record[0].to_string();
+                let value: u64 = record[1].parse()?;
+                new_data.push((label, value));
             }
         }
         if new_data.is_empty() {
